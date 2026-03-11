@@ -3,7 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/use-auth'
-import { APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, getAppwriteConfigDebug } from '@/lib/appwrite'
+import {
+  APPWRITE_ENDPOINT,
+  APPWRITE_PROJECT_ID,
+  appwriteAccount,
+  getAppwriteConfigDebug,
+} from '@/lib/appwrite'
 
 export function AuthPage() {
   const { signIn, signUp, configured } = useAuth()
@@ -14,6 +19,7 @@ export function AuthPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<Record<string, unknown> | null>(null)
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -37,6 +43,52 @@ export function AuthPage() {
     if (mode === 'signup') {
       setError('Check your inbox to confirm your account, then sign in.')
     }
+  }
+
+  const runDiagnostics = async () => {
+    const report: Record<string, unknown> = {
+      timestamp: new Date().toISOString(),
+      origin: window.location.origin,
+      online: navigator.onLine,
+      userAgent: navigator.userAgent,
+      endpoint: APPWRITE_ENDPOINT,
+      projectId: APPWRITE_PROJECT_ID,
+      config: getAppwriteConfigDebug(),
+    }
+
+    try {
+      const health = await fetch(`${APPWRITE_ENDPOINT}/health`, {
+        method: 'GET',
+        mode: 'cors',
+      })
+      report.endpointHealth = {
+        ok: health.ok,
+        status: health.status,
+      }
+    } catch (healthError) {
+      report.endpointHealth = {
+        ok: false,
+        name: (healthError as Error)?.name || 'UnknownError',
+        message: (healthError as Error)?.message || String(healthError),
+      }
+    }
+
+    try {
+      const account = await appwriteAccount.get()
+      report.accountProbe = {
+        ok: true,
+        userId: account.$id,
+        email: account.email,
+      }
+    } catch (accountError) {
+      report.accountProbe = {
+        ok: false,
+        name: (accountError as Error)?.name || 'UnknownError',
+        message: (accountError as Error)?.message || String(accountError),
+      }
+    }
+
+    setDiagnostics(report)
   }
 
   return (
@@ -96,12 +148,22 @@ export function AuthPage() {
           </Button>
 
           {showDebug && (
-            <div className="rounded-md border bg-muted/20 p-3 text-xs space-y-1 break-all">
+            <div className="rounded-md border bg-muted/20 p-3 text-xs space-y-2 break-all">
               <p><span className="font-medium">Origin:</span> {window.location.origin}</p>
               <p><span className="font-medium">Endpoint:</span> {APPWRITE_ENDPOINT || '(empty)'}</p>
               <p><span className="font-medium">Project:</span> {APPWRITE_PROJECT_ID || '(empty)'}</p>
               <p><span className="font-medium">Configured:</span> {String(getAppwriteConfigDebug().configured)}</p>
               <p><span className="font-medium">Fully configured:</span> {String(getAppwriteConfigDebug().fullyConfigured)}</p>
+
+              <Button type="button" variant="outline" className="w-full" onClick={runDiagnostics}>
+                Run connectivity diagnostics
+              </Button>
+
+              {diagnostics && (
+                <pre className="max-h-56 overflow-auto rounded bg-background p-2 text-[11px] leading-relaxed">
+                  {JSON.stringify(diagnostics, null, 2)}
+                </pre>
+              )}
             </div>
           )}
         </CardContent>

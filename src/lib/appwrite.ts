@@ -49,8 +49,12 @@ export type Distraction = {
   type: 'tab-switch' | 'idle' | 'notification'
 }
 
-export const APPWRITE_ENDPOINT = import.meta.env.VITE_APPWRITE_ENDPOINT || ''
-export const APPWRITE_PROJECT_ID = import.meta.env.VITE_APPWRITE_PROJECT_ID || ''
+function cleanEnvValue(value: string | undefined) {
+  return (value || '').trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '')
+}
+
+export const APPWRITE_ENDPOINT = cleanEnvValue(import.meta.env.VITE_APPWRITE_ENDPOINT).replace(/\/+$/, '')
+export const APPWRITE_PROJECT_ID = cleanEnvValue(import.meta.env.VITE_APPWRITE_PROJECT_ID)
 export const APPWRITE_DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || ''
 export const APPWRITE_SUBJECTS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_SUBJECTS_COLLECTION_ID || ''
 export const APPWRITE_TASKS_COLLECTION_ID = import.meta.env.VITE_APPWRITE_TASKS_COLLECTION_ID || ''

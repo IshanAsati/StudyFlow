@@ -3,10 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/use-auth'
-import { APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from '@/lib/appwrite'
+import { APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, getAppwriteConfigDebug } from '@/lib/appwrite'
 
 export function AuthPage() {
   const { signIn, signUp, configured } = useAuth()
+  const [showDebug, setShowDebug] = useState(false)
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -84,6 +85,25 @@ export function AuthPage() {
           >
             {mode === 'signin' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
           </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-xs text-muted-foreground"
+            onClick={() => setShowDebug((value) => !value)}
+          >
+            {showDebug ? 'Hide connection debug' : 'Show connection debug'}
+          </Button>
+
+          {showDebug && (
+            <div className="rounded-md border bg-muted/20 p-3 text-xs space-y-1 break-all">
+              <p><span className="font-medium">Origin:</span> {window.location.origin}</p>
+              <p><span className="font-medium">Endpoint:</span> {APPWRITE_ENDPOINT || '(empty)'}</p>
+              <p><span className="font-medium">Project:</span> {APPWRITE_PROJECT_ID || '(empty)'}</p>
+              <p><span className="font-medium">Configured:</span> {String(getAppwriteConfigDebug().configured)}</p>
+              <p><span className="font-medium">Fully configured:</span> {String(getAppwriteConfigDebug().fullyConfigured)}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

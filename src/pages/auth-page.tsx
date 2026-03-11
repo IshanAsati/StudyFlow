@@ -3,9 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/use-auth'
+import { APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from '@/lib/appwrite'
 
 export function AuthPage() {
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, configured } = useAuth()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -55,9 +56,21 @@ export function AuthPage() {
           <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" />
           <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Password" />
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {!configured && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive space-y-1">
+              <p>Appwrite is not configured for this deployment.</p>
+              <p>Set these Vercel env vars and redeploy:</p>
+              <p>`VITE_APPWRITE_ENDPOINT` and `VITE_APPWRITE_PROJECT_ID`</p>
+            </div>
+          )}
 
-          <Button className="w-full" onClick={handleSubmit} disabled={loading}>
+          {configured && (!APPWRITE_ENDPOINT || !APPWRITE_PROJECT_ID) && (
+            <p className="text-xs text-muted-foreground">Double-check Appwrite env values.</p>
+          )}
+
+          {error && <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>}
+
+          <Button className="w-full" onClick={handleSubmit} disabled={loading || !configured}>
             {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : 'Sign Up'}
           </Button>
 

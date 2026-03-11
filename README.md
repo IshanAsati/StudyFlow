@@ -1,97 +1,66 @@
 # StudyFlow
 
-A modern web app for high-school students to track and improve study habits.
+StudyFlow is a productivity app for students with Pomodoro timing, task management, distraction tracking, and analytics.
 
-## Features
+## Highlights
 
-- **Dashboard** - View today's tasks, total study time, active streak, and weekly progress
-- **Pomodoro Timer** - 25min focus/5min break sessions with custom durations and visual progress ring
-- **Task Manager** - Organize tasks by subjects with drag-and-drop ordering
-- **Analytics** - Track daily/weekly progress with charts and streak counter
-- **Distraction Tracking** - Tab switch detection and interruption logging
-- **Dark/Light Mode** - Toggle between themes
-- **Offline Support** - localStorage fallback for offline usage
-- **PDF Export** - Generate progress reports
+- Pomodoro timer with focus/break/long-break modes
+- Task management with subjects, priorities, due dates, archive, and drag-and-drop ordering
+- Distraction logging and analytics dashboards
+- Gamification: XP, levels, streaks, and achievements
+- PDF export and keyboard shortcuts
+- Appwrite-backed auth and sync support
 
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript
-- **Styling**: TailwindCSS
-- **Components**: shadcn/ui patterns with Radix UI primitives
-- **State Management**: Zustand
-- **Charts**: Recharts
-- **Backend**: Supabase (optional - app works offline with localStorage)
-- **Routing**: React Router v6
-- **Notifications**: React Hot Toast
+- React 18 + TypeScript + Vite
+- Zustand for state management
+- Tailwind CSS + Radix UI primitives
+- Recharts + Framer Motion
+- Appwrite SDK + Node Appwrite SDK
 
-## Getting Started
+## Environment Variables
 
-### Prerequisites
+Create `.env` from `.env.example` and provide:
 
-- Node.js 18+
-- npm or yarn
+- `VITE_APPWRITE_ENDPOINT`
+- `VITE_APPWRITE_PROJECT_ID`
+- `VITE_APPWRITE_DATABASE_ID`
+- `VITE_APPWRITE_SUBJECTS_COLLECTION_ID`
+- `VITE_APPWRITE_TASKS_COLLECTION_ID`
+- `VITE_APPWRITE_SESSIONS_COLLECTION_ID`
+- `VITE_APPWRITE_DISTRACTIONS_COLLECTION_ID`
+- `VITE_APPWRITE_EXPORTS_BUCKET_ID`
 
-### Installation
+## Local Development
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-2. (Optional) Set up Supabase:
-   - Create a `.env` file based on `.env.example`
-   - Add your Supabase URL and anon key
-   - Run the SQL schema in `supabase/schema.sql` in your Supabase SQL Editor
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-4. Open http://localhost:5173
-
-## Keyboard Shortcuts
-
-- `t` - Toggle timer
-- `n` - New task
-- `d` - Toggle dark mode
-- `?` - Show keyboard shortcuts
-
-## Project Structure
-
+```bash
+npm install
+npm run dev
 ```
-src/
-├── components/
-│   ├── ui/              # shadcn UI components
-│   ├── dashboard/       # Dashboard widgets
-│   ├── pomodoro/        # Timer components
-│   ├── tasks/           # Task manager components
-│   ├── analytics/       # Charts and stats
-│   └── layout/          # Header, sidebar, theme toggle
-├── hooks/               # Custom React hooks
-├── lib/                 # Utils, Supabase client
-├── pages/               # Page components
-├── store/               # Zustand state stores
-├── types/               # TypeScript types
-└── styles/              # Global styles
+
+## Appwrite Provisioning Script
+
+You can provision database/collections/bucket with:
+
+```bash
+APPWRITE_ENDPOINT="https://cloud.appwrite.io/v1" \
+APPWRITE_PROJECT_ID="<project-id>" \
+APPWRITE_API_KEY="<server-api-key>" \
+node scripts/setup-appwrite.mjs
 ```
+
+The script prints `VITE_*` values to copy into `.env`.
 
 ## Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
+- `npm run dev`
+- `npm run build`
+- `npm run preview`
+- `npm run lint`
 
-## Deployment
+## Notes for Maintainers
 
-Deploy to Vercel:
-
-1. Push code to GitHub
-2. Import project to Vercel
-3. Add environment variables
-4. Deploy
-
-## License
-
-MIT
+- Appwrite sync currently uses full-collection replacement strategy per user for deterministic behavior.
+- If scale increases, move to incremental diff/upsert sync.
+- Keep `.env` out of git; use `.env.example` as template.

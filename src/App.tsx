@@ -31,6 +31,17 @@ function AppRoutes() {
   useAppwriteSync()
   const location = useLocation()
 
+  const AppShell = (
+    <Layout>
+      <Routes>
+        <Route path="/" element={<PageTransition><Suspense fallback={null}><Dashboard /></Suspense></PageTransition>} />
+        <Route path="/timer" element={<PageTransition><Suspense fallback={null}><TimerPage /></Suspense></PageTransition>} />
+        <Route path="/tasks" element={<PageTransition><Suspense fallback={null}><TasksPage /></Suspense></PageTransition>} />
+        <Route path="/analytics" element={<PageTransition><Suspense fallback={null}><AnalyticsPage /></Suspense></PageTransition>} />
+      </Routes>
+    </Layout>
+  )
+
   return (
     <AnimatePresence mode="wait" initial={false}>
       <Routes location={location} key={location.pathname}>
@@ -54,14 +65,7 @@ function AppRoutes() {
           path="*"
           element={
             <AuthGuard>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<PageTransition><Suspense fallback={null}><Dashboard /></Suspense></PageTransition>} />
-                  <Route path="/timer" element={<PageTransition><Suspense fallback={null}><TimerPage /></Suspense></PageTransition>} />
-                  <Route path="/tasks" element={<PageTransition><Suspense fallback={null}><TasksPage /></Suspense></PageTransition>} />
-                  <Route path="/analytics" element={<PageTransition><Suspense fallback={null}><AnalyticsPage /></Suspense></PageTransition>} />
-                </Routes>
-              </Layout>
+              {AppShell}
             </AuthGuard>
           }
         />

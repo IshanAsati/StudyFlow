@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { ID, Permission, Query, Role } from 'appwrite'
 import {
   APPWRITE_DATABASE_ID,
@@ -7,7 +7,10 @@ import {
   APPWRITE_SUBJECTS_COLLECTION_ID,
   APPWRITE_TASKS_COLLECTION_ID,
   appwriteDatabases,
-  isAppwriteConfigured,
+  isAppwriteFullyConfigured,
+  type Subject,
+  type Task,
+  type StudySession,
 } from '@/lib/appwrite'
 import { useAuth } from '@/hooks/use-auth'
 import {
@@ -15,57 +18,108 @@ import {
   useProgressStore,
   useSessionStore,
   useTaskStore,
-  useTimerStore,
 } from '@/store/app-store'
 
-const collectionPermissions = [
-  Permission.read(Role.users()),
-  Permission.write(Role.users()),
-]
+const collectionPermissions = [Permission.read(Role.users()), Permission.write(Role.users())]
+
+function normalizeSubject(doc: any): Subject {
+  return {
+    id: doc.$id,
+    user_id: doc.user_id,
+    name: doc.name,
+    color: doc.color,
+    created_at: doc.created_at,
+  }
+}
+
+function normalizeTask(doc: any): Task {
+  return {
+    id: doc.$id,
+    user_id: doc.user_id,
+    subject_id: doc.subject_id || null,
+    title: doc.title,
+    description: doc.description || null,
+    completed: Boolean(doc.completed),
+    completed_at: doc.completed_at || null,
+    due_date: doc.due_date || null,
+    priority: doc.priority || 'medium',
+    archived: Boolean(doc.archived),
+    order: Number(doc.order || 0),
+    created_at: doc.created_at,
+  }
+}
+
+function normalizeSession(doc: any): StudySession {
+  return {
+    id: doc.$id,
+    user_id: doc.user_id,
+    subject_id: doc.subject_id || null,
+    duration: Number(doc.duration || 0),
+    started_at: doc.started_at,
+    completed_at: doc.completed_at || null,
+  }
+}
+
+async function replaceCollection(
+  collectionId: string,
+  userId: string,
+  payload: Array<{ id: string; data: Record<string, unknown> }>
+) {
+  const existing = await appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, collectionId, [
+    Query.equal('user_id', userId),
+  ])
+
+  await Promise.all(
+    existing.documents.map((doc: any) =>
+      appwriteDatabases.deleteDocument(APPWRITE_DATABASE_ID, collectionId, doc.$id)
+    )
+  )
+
+  await Promise.all(
+    payload.map((item) =>
+      appwriteDatabases.createDocument(
+        APPWRITE_DATABASE_ID,
+        collectionId,
+        item.id || ID.unique(),
+        item.data,
+        collectionPermissions
+      )
+    )
+  )
+}
 
 export function useAppwriteSync() {
-  const { user } = useAuth()
-  const isHydratedRef = useRef(false)
-  const syncingRef = useRef(false)
+  const { user, configured } = useAuth()
 
-  const { tasks, subjects, setTasks, setSubjects, reset: resetTasks } = useTaskStore()
-  const { sessions, setSessions, reset: resetSessions } = useSessionStore()
-  const { events, reset: resetDistractions } = useDistractionStore()
-  const { xp, dailyGoalMinutes, weeklyGoalSessions, unlockedBadges, reset: resetProgress } = useProgressStore()
+  const { tasks, subjects, setTasks, setSubjects } = useTaskStore()
+  const { sessions, setSessions } = useSessionStore()
+  const { events } = useDistractionStore()
+  const { xp, dailyGoalMinutes, weeklyGoalSessions, unlockedBadges } = useProgressStore()
 
   useEffect(() => {
-    if (!isAppwriteConfigured || !user) {
-      isHydratedRef.current = false
-      return
-    }
+    if (!configured || !isAppwriteFullyConfigured || !user) return
 
-    let mounted = true
+    let cancelled = false
 
-    const hydrate = async () => {
-      syncingRef.current = true
+    const load = async () => {
       try {
-        const [subjectsRes, tasksRes, sessionsRes, distractionsRes] = await Promise.all([
-          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_SUBJECTS_COLLECTION_ID, [Query.equal('user_id', user.id)]),
-          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_TASKS_COLLECTION_ID, [Query.equal('user_id', user.id)]),
-          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_SESSIONS_COLLECTION_ID, [Query.equal('user_id', user.id)]),
-          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_DISTRACTIONS_COLLECTION_ID, [Query.equal('user_id', user.id)]),
+        const [subjectsRes, tasksRes, sessionsRes] = await Promise.all([
+          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_SUBJECTS_COLLECTION_ID, [
+            Query.equal('user_id', user.id),
+          ]),
+          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_TASKS_COLLECTION_ID, [
+            Query.equal('user_id', user.id),
+          ]),
+          appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_SESSIONS_COLLECTION_ID, [
+            Query.equal('user_id', user.id),
+          ]),
         ])
 
-        if (!mounted) return
+        if (cancelled) return
 
-        setSubjects(subjectsRes.documents.map((doc: any) => ({ ...doc, id: doc.$id })))
-        setTasks(tasksRes.documents.map((doc: any) => ({ ...doc, id: doc.$id })))
-        setSessions(sessionsRes.documents.map((doc: any) => ({ ...doc, id: doc.$id })))
-
-        useDistractionStore.setState({
-          events: distractionsRes.documents.map((doc: any) => ({
-            id: doc.$id,
-            type: doc.type,
-            timestamp: doc.timestamp,
-            sessionId: doc.session_id || null,
-          })),
-          distractions: distractionsRes.total,
-        })
+        setSubjects(subjectsRes.documents.map(normalizeSubject))
+        setTasks(tasksRes.documents.map(normalizeTask))
+        setSessions(sessionsRes.documents.map(normalizeSession))
 
         const progressRaw = localStorage.getItem(`studyflow-progress-${user.id}`)
         if (progressRaw) {
@@ -77,160 +131,101 @@ export function useAppwriteSync() {
             unlockedBadges: Array.isArray(progress.unlockedBadges) ? progress.unlockedBadges : [],
           })
         }
-
-        isHydratedRef.current = true
       } catch {
-        isHydratedRef.current = true
-      } finally {
-        syncingRef.current = false
+        // Keep local state if remote is unavailable
       }
     }
 
-    hydrate()
+    load()
 
     return () => {
-      mounted = false
+      cancelled = true
     }
-  }, [user, setSessions, setSubjects, setTasks])
+  }, [configured, user, setSubjects, setTasks, setSessions])
 
   useEffect(() => {
-    if (!isAppwriteConfigured || !user || !isHydratedRef.current || syncingRef.current) return
+    if (!configured || !isAppwriteFullyConfigured || !user) return
 
-    const sync = async () => {
-      syncingRef.current = true
-      try {
-        const existing = await appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_SUBJECTS_COLLECTION_ID, [Query.equal('user_id', user.id)])
-        await Promise.all(existing.documents.map((doc: any) => appwriteDatabases.deleteDocument(APPWRITE_DATABASE_ID, APPWRITE_SUBJECTS_COLLECTION_ID, doc.$id)))
-        await Promise.all(
-          subjects.map((subject) =>
-            appwriteDatabases.createDocument(
-              APPWRITE_DATABASE_ID,
-              APPWRITE_SUBJECTS_COLLECTION_ID,
-              subject.id || ID.unique(),
-              {
-                user_id: user.id,
-                name: subject.name,
-                color: subject.color,
-                created_at: subject.created_at,
-              },
-              collectionPermissions
-            )
-          )
-        )
-      } finally {
-        syncingRef.current = false
-      }
-    }
-
-    sync()
-  }, [subjects, user])
+    replaceCollection(
+      APPWRITE_SUBJECTS_COLLECTION_ID,
+      user.id,
+      subjects.map((subject) => ({
+        id: subject.id,
+        data: {
+          user_id: user.id,
+          name: subject.name,
+          color: subject.color,
+          created_at: subject.created_at,
+        },
+      }))
+    ).catch(() => undefined)
+  }, [configured, user, subjects])
 
   useEffect(() => {
-    if (!isAppwriteConfigured || !user || !isHydratedRef.current || syncingRef.current) return
+    if (!configured || !isAppwriteFullyConfigured || !user) return
 
-    const sync = async () => {
-      syncingRef.current = true
-      try {
-        const existing = await appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_TASKS_COLLECTION_ID, [Query.equal('user_id', user.id)])
-        await Promise.all(existing.documents.map((doc: any) => appwriteDatabases.deleteDocument(APPWRITE_DATABASE_ID, APPWRITE_TASKS_COLLECTION_ID, doc.$id)))
-        await Promise.all(
-          tasks.map((task) =>
-            appwriteDatabases.createDocument(
-              APPWRITE_DATABASE_ID,
-              APPWRITE_TASKS_COLLECTION_ID,
-              task.id || ID.unique(),
-              {
-                user_id: user.id,
-                subject_id: task.subject_id,
-                title: task.title,
-                description: task.description,
-                completed: task.completed,
-                completed_at: task.completed_at || null,
-                due_date: task.due_date || null,
-                priority: task.priority || 'medium',
-                archived: Boolean(task.archived),
-                order: task.order,
-                created_at: task.created_at,
-              },
-              collectionPermissions
-            )
-          )
-        )
-      } finally {
-        syncingRef.current = false
-      }
-    }
-
-    sync()
-  }, [tasks, user])
+    replaceCollection(
+      APPWRITE_TASKS_COLLECTION_ID,
+      user.id,
+      tasks.map((task) => ({
+        id: task.id,
+        data: {
+          user_id: user.id,
+          subject_id: task.subject_id,
+          title: task.title,
+          description: task.description,
+          completed: task.completed,
+          completed_at: task.completed_at || null,
+          due_date: task.due_date || null,
+          priority: task.priority || 'medium',
+          archived: Boolean(task.archived),
+          order: task.order,
+          created_at: task.created_at,
+        },
+      }))
+    ).catch(() => undefined)
+  }, [configured, user, tasks])
 
   useEffect(() => {
-    if (!isAppwriteConfigured || !user || !isHydratedRef.current || syncingRef.current) return
+    if (!configured || !isAppwriteFullyConfigured || !user) return
 
-    const sync = async () => {
-      syncingRef.current = true
-      try {
-        const existing = await appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_SESSIONS_COLLECTION_ID, [Query.equal('user_id', user.id)])
-        await Promise.all(existing.documents.map((doc: any) => appwriteDatabases.deleteDocument(APPWRITE_DATABASE_ID, APPWRITE_SESSIONS_COLLECTION_ID, doc.$id)))
-        await Promise.all(
-          sessions.map((session) =>
-            appwriteDatabases.createDocument(
-              APPWRITE_DATABASE_ID,
-              APPWRITE_SESSIONS_COLLECTION_ID,
-              session.id || ID.unique(),
-              {
-                user_id: user.id,
-                subject_id: session.subject_id,
-                duration: session.duration,
-                started_at: session.started_at,
-                completed_at: session.completed_at,
-              },
-              collectionPermissions
-            )
-          )
-        )
-      } finally {
-        syncingRef.current = false
-      }
-    }
-
-    sync()
-  }, [sessions, user])
+    replaceCollection(
+      APPWRITE_SESSIONS_COLLECTION_ID,
+      user.id,
+      sessions.map((session) => ({
+        id: session.id,
+        data: {
+          user_id: user.id,
+          subject_id: session.subject_id,
+          duration: session.duration,
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+        },
+      }))
+    ).catch(() => undefined)
+  }, [configured, user, sessions])
 
   useEffect(() => {
-    if (!isAppwriteConfigured || !user || !isHydratedRef.current || syncingRef.current) return
+    if (!configured || !isAppwriteFullyConfigured || !user) return
 
-    const sync = async () => {
-      syncingRef.current = true
-      try {
-        const existing = await appwriteDatabases.listDocuments(APPWRITE_DATABASE_ID, APPWRITE_DISTRACTIONS_COLLECTION_ID, [Query.equal('user_id', user.id)])
-        await Promise.all(existing.documents.map((doc: any) => appwriteDatabases.deleteDocument(APPWRITE_DATABASE_ID, APPWRITE_DISTRACTIONS_COLLECTION_ID, doc.$id)))
-        await Promise.all(
-          events.map((event) =>
-            appwriteDatabases.createDocument(
-              APPWRITE_DATABASE_ID,
-              APPWRITE_DISTRACTIONS_COLLECTION_ID,
-              event.id || ID.unique(),
-              {
-                user_id: user.id,
-                session_id: event.sessionId,
-                timestamp: event.timestamp,
-                type: event.type,
-              },
-              collectionPermissions
-            )
-          )
-        )
-      } finally {
-        syncingRef.current = false
-      }
-    }
-
-    sync()
-  }, [events, user])
+    replaceCollection(
+      APPWRITE_DISTRACTIONS_COLLECTION_ID,
+      user.id,
+      events.map((event) => ({
+        id: event.id,
+        data: {
+          user_id: user.id,
+          session_id: event.sessionId,
+          timestamp: event.timestamp,
+          type: event.type,
+        },
+      }))
+    ).catch(() => undefined)
+  }, [configured, user, events])
 
   useEffect(() => {
     if (!user) return
+
     localStorage.setItem(
       `studyflow-progress-${user.id}`,
       JSON.stringify({
@@ -241,28 +236,4 @@ export function useAppwriteSync() {
       })
     )
   }, [user, xp, dailyGoalMinutes, weeklyGoalSessions, unlockedBadges])
-
-  useEffect(() => {
-    if (!user) return
-    useTimerStore.setState({ sessionId: user.id })
-  }, [user])
-
-  const clearAllLocalState = () => {
-    resetTasks()
-    resetSessions()
-    resetDistractions()
-    resetProgress()
-    useTimerStore.setState({
-      currentSubjectId: null,
-      sessionId: null,
-      completedSessions: 0,
-      mode: 'focus',
-      isRunning: false,
-      isPaused: false,
-    })
-  }
-
-  return {
-    clearAllLocalState,
-  }
 }

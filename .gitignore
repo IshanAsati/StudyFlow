@@ -3,6 +3,7 @@ dist/
 .env
 .env.*
 !.env.example
+local.env
 .DS_Store
 nul
 *.log

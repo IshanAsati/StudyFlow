@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   appwriteAccount,
   isAppwriteConfigured,
@@ -20,12 +20,31 @@ interface AuthContextValue {
   signOut: () => Promise<void>
 }
 
+function normalizeAuthError(error: unknown) {
+  const message = (error as Error)?.message || 'Unknown authentication error'
+
+  if (message.toLowerCase().includes('failed to fetch')) {
+    return 'Network/CORS issue. Add your Vercel domain to Appwrite Web Platforms and verify VITE_APPWRITE_ENDPOINT + VITE_APPWRITE_PROJECT_ID in Vercel env.'
+  }
+
+  return message
+}
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const mapAccountToUser = useCallback((account: { $id: string; email: string; name: string; $createdAt: string }): User => {
+    return {
+      id: account.$id,
+      email: account.email,
+      name: account.name,
+      created_at: account.$createdAt,
+    }
+  }, [])
 
   useEffect(() => {
     if (!isAppwriteConfigured) {
@@ -36,12 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const bootstrap = async () => {
       try {
         const account = await appwriteAccount.get()
-        const mapped: User = {
-          id: account.$id,
-          email: account.email,
-          name: account.name,
-          created_at: account.$createdAt,
-        }
+        const mapped = mapAccountToUser(account)
         setUser(mapped)
         setSession({ id: `session-${mapped.id}`, userId: mapped.id })
       } catch {
@@ -53,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     bootstrap()
-  }, [])
+  }, [mapAccountToUser])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -67,17 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await appwriteAccount.createEmailPasswordSession(email, password)
           const account = await appwriteAccount.get()
-          const mapped: User = {
-            id: account.$id,
-            email: account.email,
-            name: account.name,
-            created_at: account.$createdAt,
-          }
+          const mapped = mapAccountToUser(account)
           setUser(mapped)
           setSession({ id: `session-${mapped.id}`, userId: mapped.id })
           return { error: null }
         } catch (error) {
-          return { error: (error as Error).message }
+          return { error: normalizeAuthError(error) }
         }
       },
       signUp: async (email, password, name) => {
@@ -88,17 +97,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await appwriteAccount.create('unique()', email, password, accountName)
           await appwriteAccount.createEmailPasswordSession(email, password)
           const account = await appwriteAccount.get()
-          const mapped: User = {
-            id: account.$id,
-            email: account.email,
-            name: account.name,
-            created_at: account.$createdAt,
-          }
+          const mapped = mapAccountToUser(account)
           setUser(mapped)
           setSession({ id: `session-${mapped.id}`, userId: mapped.id })
           return { error: null }
         } catch (error) {
-          return { error: (error as Error).message }
+          return { error: normalizeAuthError(error) }
         }
       },
       signOut: async () => {
@@ -111,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [user, session, loading]
+    [user, session, loading, mapAccountToUser]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
